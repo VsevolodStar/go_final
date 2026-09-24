@@ -10,7 +10,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var secretKey = []byte("a9f3Kd8xPq2Ws5Rv7Tn0Yz4Bm6Hj1Uc")
+// объявляем переменные для работы с паролем
+var (
+	secretKey    = []byte("a9f3Kd8xPq2Ws5Rv7Tn0Yz4Bm6Hj1Uc")
+	todoPassword = os.Getenv("TODO_PASSWORD")
+	passwordHash = getPasswordHash(todoPassword)
+)
 
 // getPasswordHash возвращает хэш пароля
 func getPasswordHash(password string) string {
@@ -21,6 +26,12 @@ func getPasswordHash(password string) string {
 
 // signinHandler обрабатывает авторизацию пользователя
 func signinHandler(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != http.MethodPost {
+		sendError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req struct {
 		Password string `json:"password"`
 	}
@@ -30,15 +41,14 @@ func signinHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	envPass := os.Getenv("TODO_PASSWORD")
-	if envPass != req.Password {
+	if todoPassword != req.Password {
 		sendError(w, "Неверный пароль", http.StatusUnauthorized)
 		return
 	}
 
 	// JWT с хэшем пароля
 	claims := jwt.MapClaims{
-		"hash": getPasswordHash(envPass),
+		"hash": passwordHash,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString(secretKey)
@@ -53,8 +63,7 @@ func signinHandler(w http.ResponseWriter, r *http.Request) {
 // auth проверяет аутентификацию по JWT-токену из cookie
 func auth(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pass := os.Getenv("TODO_PASSWORD")
-		if len(pass) > 0 {
+		if len(todoPassword) > 0 {
 			cookie, err := r.Cookie("token")
 			if err != nil {
 				sendError(w, "Authentification required", http.StatusUnauthorized)
@@ -77,7 +86,7 @@ func auth(next http.HandlerFunc) http.HandlerFunc {
 			}
 
 			hashFromToken, ok := claims["hash"].(string)
-			if !ok || hashFromToken != getPasswordHash(pass) {
+			if !ok || hashFromToken != passwordHash {
 				sendError(w, "Authentification required", http.StatusUnauthorized)
 				return
 			}

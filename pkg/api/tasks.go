@@ -6,6 +6,8 @@ import (
 	"final-project/pkg/db"
 )
 
+const limit = 20
+
 type tasksResp struct {
 	Tasks []*db.Task `json:"tasks"`
 }
@@ -18,7 +20,7 @@ func TasksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	search := r.URL.Query().Get("search")
-	tasks, err := db.Tasks(search, 20) // Ограничение в 20 задач
+	tasks, err := db.Tasks(search, limit) // Ограничили запрос в limit задач
 	if err != nil {
 		sendError(w, "ошибка при получении задач: "+err.Error(), http.StatusInternalServerError)
 		return

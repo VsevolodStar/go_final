@@ -26,6 +26,7 @@ func main() {
 	log.Printf("Запуск веб-сервера на порту %s...\n", port)
 
 	if err := server.Start(port); err != nil {
-		log.Fatalf("Ошибка при работе сервера: %v", err)
+		log.Printf("Ошибка при работе сервера: %v", err)
+		return
 	}
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -13,7 +14,9 @@ import (
 func writeJSON(w http.ResponseWriter, data any, statusCode int) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Ошибка кодирования ответа: %v", err)
+	}
 }
 
 // sendError отправляет JSON с полем error
@@ -39,14 +42,18 @@ func taskHandler(w http.ResponseWriter, r *http.Request) {
 
 // checkDate проверяет и форматирует дату и правило повторения Задачи
 func checkDate(task *db.Task) error {
+	if task == nil {
+		return fmt.Errorf("задача не может быть nil")
+	}
+
 	now := time.Now()
-	nowStr := now.Format(DateFormat)
+	nowStr := now.Format(db.DateFormat)
 
 	if task.Date == "" {
 		task.Date = nowStr
 	}
 
-	t, err := time.Parse(DateFormat, task.Date)
+	t, err := time.Parse(db.DateFormat, task.Date)
 	if err != nil {
 		return fmt.Errorf("неверный формат даты: %v", err)
 	}
@@ -59,7 +66,7 @@ func checkDate(task *db.Task) error {
 		}
 	}
 
-	if nowStr > t.Format(DateFormat) {
+	if nowStr > t.Format(db.DateFormat) {
 		if task.Repeat == "" {
 			task.Date = nowStr
 		} else {
@@ -74,7 +81,7 @@ func checkDate(task *db.Task) error {
 func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	var task db.Task
 	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		sendError(w, "ошибка десериализации JSON", http.StatusBadRequest)
+		sendError(w, "ошибка десериализации JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -90,7 +97,8 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, err := db.AddTask(&task)
 	if err != nil {
-		sendError(w, "ошибка при добавлении задачи в БД", http.StatusInternalServerError)
+		log.Printf("Ошибка добавления задачи в БД: %v", err)
+		sendError(w, "Ошибка при добавлении задачи в БД: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -107,7 +115,7 @@ func getTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	task, err := db.GetTask(id)
 	if err != nil {
-		sendError(w, "Задача не найдена", http.StatusNotFound)
+		sendError(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -118,7 +126,7 @@ func getTaskHandler(w http.ResponseWriter, r *http.Request) {
 func updateTaskHandler(w http.ResponseWriter, r *http.Request) {
 	var task db.Task
 	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		sendError(w, "ошибка десериализации JSON", http.StatusBadRequest)
+		sendError(w, "Ошибка десериализации JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -138,7 +146,7 @@ func updateTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.UpdateTask(&task); err != nil {
-		sendError(w, "Задача не найдена", http.StatusBadRequest)
+		sendError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -154,7 +162,7 @@ func deleteTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.DeleteTask(id); err != nil {
-		sendError(w, "Задача не найдена", http.StatusBadRequest)
+		sendError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -176,26 +184,29 @@ func doneTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	task, err := db.GetTask(id)
 	if err != nil {
-		sendError(w, "Задача не найдена", http.StatusBadRequest)
+		sendError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if task.Repeat == "" {
 		// Если разовая Задача, то удаляем
 		if err := db.DeleteTask(id); err != nil {
-			sendError(w, "Ошибка при удалении задачи", http.StatusInternalServerError)
+			log.Printf("Ошибка при удалении задачи: %v", err)
+			sendError(w, "Ошибка при удалении задачи: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
 		// Если периодическая Задача, то вычисляем новую дату
 		nextDate, err := NextDate(time.Now(), task.Date, task.Repeat)
 		if err != nil {
-			sendError(w, "Ошибка при вычислении следующей даты", http.StatusInternalServerError)
+			log.Printf("Ошибка при вычислении следующей даты: %v", err)
+			sendError(w, "Ошибка при вычислении следующей даты: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := db.UpdateDate(nextDate, id); err != nil {
-			sendError(w, "Ошибка при обновлении даты задачи", http.StatusInternalServerError)
+			log.Printf("Ошибка при обновлении даты задачи: %v", err)
+			sendError(w, "Ошибка при обновлении даты задачи: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}

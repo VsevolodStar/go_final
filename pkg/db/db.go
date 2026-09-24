@@ -28,6 +28,7 @@ func Init(dbFile string) error {
 	}
 
 	if _, err := d.Exec(schema); err != nil {
+		d.Close()
 		return err
 	}
 

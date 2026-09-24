@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const DateFormat = "20060102"
+
 // Поля структуры Задачи
 type Task struct {
 	ID      string `json:"id"`
@@ -33,7 +35,7 @@ func Tasks(search string, limit int) ([]*Task, error) {
 	if search != "" {
 		t, errParse := time.Parse("02.01.2006", search)
 		if errParse == nil {
-			dateStr := t.Format("20060102")
+			dateStr := t.Format(DateFormat)
 			query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE date = :date ORDER BY date LIMIT :limit`
 			rows, err = DB.Query(query, sql.Named("date", dateStr), sql.Named("limit", limit))
 		} else {

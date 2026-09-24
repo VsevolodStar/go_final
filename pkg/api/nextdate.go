@@ -3,14 +3,14 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-)
 
-// Определяет стандартный формат даты для приложения
-const DateFormat = "20060102"
+	"final-project/pkg/db"
+)
 
 // NextDate вычисляет следующую дату задачи в зависимости от правила повторения
 func NextDate(now time.Time, dstart string, repeat string) (string, error) {
@@ -18,7 +18,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		return "", errors.New("empty repeat rule")
 	}
 
-	startDate, err := time.Parse(DateFormat, dstart)
+	startDate, err := time.Parse(db.DateFormat, dstart)
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +29,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 	}
 
 	rule := parts[0]
-	nowStr := now.Format(DateFormat)
+	nowStr := now.Format(db.DateFormat)
 
 	switch rule {
 	case "y":
@@ -39,8 +39,8 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		date := startDate
 		for {
 			date = date.AddDate(1, 0, 0)
-			if date.Format(DateFormat) > nowStr {
-				return date.Format(DateFormat), nil
+			if date.Format(db.DateFormat) > nowStr {
+				return date.Format(db.DateFormat), nil
 			}
 		}
 
@@ -55,8 +55,8 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		date := startDate
 		for {
 			date = date.AddDate(0, 0, days)
-			if date.Format(DateFormat) > nowStr {
-				return date.Format(DateFormat), nil
+			if date.Format(db.DateFormat) > nowStr {
+				return date.Format(db.DateFormat), nil
 			}
 		}
 
@@ -81,11 +81,18 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		}
 
 		date := startDate
+		if date.Before(now) {
+			date = now
+		}
+		maxDate := date.AddDate(10, 0, 0)
 		for {
 			date = date.AddDate(0, 0, 1)
+			if date.After(maxDate) {
+				return "", errors.New("невозможно подобрать следующую дату для правила повторения")
+			}
 			if matchesWeekday(date, allowedDays) {
-				if date.Format(DateFormat) > nowStr {
-					return date.Format(DateFormat), nil
+				if date.Format(db.DateFormat) > nowStr {
+					return date.Format(db.DateFormat), nil
 				}
 			}
 		}
@@ -117,11 +124,18 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		}
 
 		date := startDate
+		if date.Before(now) {
+			date = now // если дата старше сегодняшней, отсчет ведем с сегодняшего дня, чтобы не перебирать впустую прошедшие дни
+		}
+		maxDate := date.AddDate(10, 0, 0) // установлен лимит рассчета в 10 лет, чтобы избежать бесконечного цикла поиска несуществующей даты
 		for {
 			date = date.AddDate(0, 0, 1)
+			if date.After(maxDate) {
+				return "", errors.New("невозможно подобрать следующую дату для правила повторения")
+			}
 			if matchesMonthRule(date, allowedDays, allowedMonths) {
-				if date.Format(DateFormat) > nowStr {
-					return date.Format(DateFormat), nil
+				if date.Format(db.DateFormat) > nowStr {
+					return date.Format(db.DateFormat), nil
 				}
 			}
 		}
@@ -180,6 +194,12 @@ func matchesMonthRule(d time.Time, allowedDays []int, allowedMonths []int) bool 
 
 // NextDateHandler обрабатывает запросы /api/nextdate.
 func NextDateHandler(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	nowStr := r.FormValue("now")
 	dateStr := r.FormValue("date")
 	repeat := r.FormValue("repeat")
@@ -187,7 +207,7 @@ func NextDateHandler(w http.ResponseWriter, r *http.Request) {
 	var now time.Time
 	var err error
 	if nowStr != "" {
-		now, err = time.Parse(DateFormat, nowStr)
+		now, err = time.Parse(db.DateFormat, nowStr)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -204,5 +224,7 @@ func NextDateHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, nextDate)
+	if _, err := fmt.Fprint(w, nextDate); err != nil {
+		log.Printf("write response: %v", err)
+	}
 }
